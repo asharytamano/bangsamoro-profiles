@@ -8,7 +8,18 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer=""></script>
-</head>
+
+  <style>
+    .entry-manager{display:flex;flex-wrap:wrap;align-items:center;gap:.65rem;margin:1rem 0 1.25rem;padding:1rem;border:1px solid #d6deda;background:#f1f6f3}
+    .manager-button{border:1px solid #0b434b;background:#fff;color:#0b434b;padding:.65rem 1rem;font:600 .85rem "Segoe UI",Arial,sans-serif;cursor:pointer}
+    .manager-button:hover{background:#0b434b;color:#fff}
+    .manager-save{background:#0b434b;color:#fff}
+    #manager-note{flex-basis:100%;font-size:.78rem;color:#52696b}
+    .entry-remove{flex:none;border:1px solid #b65b4b;background:#fff;color:#9b3528;padding:.35rem .55rem;font-size:.75rem;cursor:pointer}
+    .entry-remove:hover{background:#9b3528;color:#fff}
+    body.manage-mode .entry{background:#fff8f5}
+    @media(max-width:620px){.entry-manager{align-items:stretch}.manager-button{width:100%}}
+  </style>\n</head>
 <body>
   <a class="skip-link" href="#directory">Skip to profiles</a>
   <header class="masthead">
@@ -43,6 +54,11 @@
             <kbd>/</kbd>
           </div>
           <p id="result-count" class="result-count" role="status" aria-live="polite">Showing all 505 entries</p>
+          <div id="entry-manager" class="entry-manager" aria-label="Entry management">
+            <button type="button" id="manage-toggle" class="manager-button">Manage entries</button>
+            <button type="button" id="export-index" class="manager-button manager-save" hidden>Download updated index.html</button>
+            <span id="manager-note" role="status">Changes stay in this browser until you download and replace index.html in GitHub.</span>
+          </div>
         </div>
         <nav class="alphabet" aria-label="Browse by first letter"><a href="#A" data-letter="A" aria-label="Jump to A">A</a><a href="#B" data-letter="B" aria-label="Jump to B">B</a><a href="#C" data-letter="C" aria-label="Jump to C">C</a><a href="#D" data-letter="D" aria-label="Jump to D">D</a><a href="#E" data-letter="E" aria-label="Jump to E">E</a><a href="#G" data-letter="G" aria-label="Jump to G">G</a><a href="#H" data-letter="H" aria-label="Jump to H">H</a><a href="#I" data-letter="I" aria-label="Jump to I">I</a><a href="#J" data-letter="J" aria-label="Jump to J">J</a><a href="#K" data-letter="K" aria-label="Jump to K">K</a><a href="#L" data-letter="L" aria-label="Jump to L">L</a><a href="#M" data-letter="M" aria-label="Jump to M">M</a><a href="#N" data-letter="N" aria-label="Jump to N">N</a><a href="#O" data-letter="O" aria-label="Jump to O">O</a><a href="#P" data-letter="P" aria-label="Jump to P">P</a><a href="#R" data-letter="R" aria-label="Jump to R">R</a><a href="#S" data-letter="S" aria-label="Jump to S">S</a><a href="#T" data-letter="T" aria-label="Jump to T">T</a><a href="#U" data-letter="U" aria-label="Jump to U">U</a><a href="#V" data-letter="V" aria-label="Jump to V">V</a><a href="#W" data-letter="W" aria-label="Jump to W">W</a><a href="#Y" data-letter="Y" aria-label="Jump to Y">Y</a><a href="#Z" data-letter="Z" aria-label="Jump to Z">Z</a></nav>
         <div id="empty" class="empty" hidden="">No entries match that search. Try another name or word.</div>
@@ -419,4 +435,95 @@
 
 
 
-</body></html>
+
+  <script>
+  (() => {
+    const toggle = document.getElementById('manage-toggle');
+    const exportButton = document.getElementById('export-index');
+    const note = document.getElementById('manager-note');
+    const search = document.getElementById('search');
+    const entriesRoot = document.getElementById('sections');
+    let managing = false;
+    let changed = false;
+
+    function refreshCounts() {
+      const all = [...document.querySelectorAll('.entry')];
+      const visible = all.filter(item => !item.hidden);
+      document.querySelector('.count-line strong').textContent = all.length;
+      document.querySelectorAll('.letter-section').forEach(section => {
+        const n = section.querySelectorAll('.entry').length;
+        section.querySelector('.letter-heading span').textContent = n + (n === 1 ? ' entry' : ' entries');
+        section.hidden = n === 0;
+      });
+      const q = search.value.trim();
+      document.getElementById('result-count').textContent = q
+        ? visible.length + (visible.length === 1 ? ' entry found' : ' entries found')
+        : 'Showing all ' + all.length + (all.length === 1 ? ' entry' : ' entries');
+      document.getElementById('empty').hidden = visible.length > 0;
+    }
+
+    function addRemoveButtons() {
+      document.querySelectorAll('.entry').forEach(entry => {
+        if (entry.querySelector('.entry-remove')) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'entry-remove';
+        button.textContent = 'Remove';
+        button.setAttribute('aria-label', 'Remove ' + (entry.querySelector('.entry-name')?.textContent || 'entry'));
+        button.addEventListener('click', () => {
+          const name = entry.querySelector('.entry-name')?.textContent || 'this entry';
+          if (!window.confirm('Remove "' + name + '" from the directory? This will be included when you download the updated index.html.')) return;
+          entry.remove();
+          changed = true;
+          exportButton.hidden = false;
+          note.textContent = 'Entry removed from this editing session. Download the updated file to keep the change on GitHub.';
+          refreshCounts();
+        });
+        entry.appendChild(button);
+      });
+    }
+
+    toggle.addEventListener('click', () => {
+      managing = !managing;
+      document.body.classList.toggle('manage-mode', managing);
+      toggle.textContent = managing ? 'Finish managing' : 'Manage entries';
+      if (managing) {
+        addRemoveButtons();
+        note.textContent = 'Select Remove beside any entry. Nothing changes on GitHub until you download and replace the file.';
+      } else {
+        document.querySelectorAll('.entry-remove').forEach(button => button.remove());
+        note.textContent = changed ? 'You have unsaved changes. Download the updated index.html before leaving.' : 'No changes made.';
+      }
+    });
+
+    exportButton.addEventListener('click', () => {
+      const clone = document.documentElement.cloneNode(true);
+      clone.querySelectorAll('.entry-remove, #entry-manager').forEach(node => node.remove());
+      clone.querySelectorAll('.entry, .letter-section').forEach(node => node.removeAttribute('hidden'));
+      const clonedSearch = clone.querySelector('#search');
+      if (clonedSearch) clonedSearch.value = '';
+      const count = clone.querySelectorAll('.entry').length;
+      const number = clone.querySelector('.count-line strong');
+      if (number) number.textContent = count;
+      clone.querySelectorAll('.letter-section').forEach(section => {
+        const n = section.querySelectorAll('.entry').length;
+        const label = section.querySelector('.letter-heading span');
+        if (label) label.textContent = n + (n === 1 ? ' entry' : ' entries');
+      });
+      const result = clone.querySelector('#result-count');
+      if (result) result.textContent = 'Showing all ' + count + (count === 1 ? ' entry' : ' entries');
+      const empty = clone.querySelector('#empty');
+      if (empty) empty.hidden = true;
+      const blob = new Blob(['<!doctype html>\\n' + clone.outerHTML], {type:'text/html;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'index.html';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      note.textContent = 'Updated index.html downloaded. Replace the existing file in your GitHub repository and commit the change.';
+    });
+  })();
+  </script>\n</body></html>
