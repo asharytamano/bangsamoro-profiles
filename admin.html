@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#0b434b">
+<title>Admin | Bangsamoro Profiles</title><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+<style>
+.admin-wrap{max-width:1100px;margin:2rem auto;padding:0 1.25rem 4rem}
+.admin-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;border-bottom:2px solid var(--teal);padding-bottom:1rem}
+.admin-head h1{font-size:clamp(2rem,5vw,3.5rem);margin:.5rem 0;color:var(--teal)}
+.panel{background:#fff;border:1px solid var(--line);padding:1.25rem;margin:1.25rem 0}
+.form-grid{display:grid;grid-template-columns:1fr 1.4fr auto;gap:.75rem;align-items:end}
+.field label{display:block;font-size:.78rem;font-weight:700;color:var(--teal);margin-bottom:.35rem}
+.field input{width:100%;padding:.8rem;border:1px solid #acc7c2;font:inherit;min-height:46px}
+.action{border:1px solid var(--teal);background:var(--teal);color:white;padding:.75rem 1rem;font:600 .85rem "Segoe UI",Arial,sans-serif;cursor:pointer;min-height:44px}
+.action.secondary{background:white;color:var(--teal)}.action.danger{background:#9b3528;border-color:#9b3528}
+.action:disabled{opacity:.45;cursor:not-allowed}
+.toolbar{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin:1rem 0}
+.toolbar input{flex:1;min-width:220px;padding:.8rem;border:1px solid #acc7c2;font:inherit}
+.status{padding:.75rem 1rem;background:#f1f6f3;color:#244e4a;font-size:.88rem;margin-top:1rem}
+.status.error{background:#fff1ee;color:#8b3026}
+.entry-table{width:100%;border-collapse:collapse;background:white}.entry-table th,.entry-table td{text-align:left;padding:.8rem;border-bottom:1px solid var(--line);vertical-align:middle}.entry-table th{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:#52696b}.entry-table td:first-child{font-weight:600}.row-actions{display:flex;gap:.4rem;flex-wrap:wrap}.row-actions button{padding:.45rem .65rem;font-size:.75rem;min-height:36px}
+.login{max-width:560px;margin:3rem auto}.login p{color:#52696b}.login .field{margin:.9rem 0}
+.muted{color:#617477;font-size:.82rem}.hidden{display:none!important}
+@media(max-width:700px){.form-grid{grid-template-columns:1fr}.entry-table thead{display:none}.entry-table,.entry-table tbody,.entry-table tr,.entry-table td{display:block;width:100%}.entry-table tr{border-bottom:1px solid var(--line);padding:.5rem 0}.entry-table td{border:0;padding:.3rem .6rem}.entry-table td:last-child{padding-bottom:.7rem}}
+</style></head>
+<body>
+<header class="masthead"><div class="masthead-inner"><div class="brand-mark" aria-hidden="true">N<span>✦</span>B</div><div class="brand-name">Notable Muslim Filipinos <span>&amp; Bangsamoro Heritage</span></div><div class="masthead-label">Admin</div></div></header>
+<main class="admin-wrap">
+<div class="admin-head"><div><p class="sidebar-kicker">Directory administration</p><h1>Manage Profiles</h1><p class="muted">Changes are committed directly to the GitHub repository.</p></div><a href="./index.html">← View public directory</a></div>
+<section id="login" class="panel login">
+<h2>Administrator sign-in</h2><p>Enter a GitHub fine-grained personal access token authorized for this repository. The token is held only in this page's memory and is cleared when you sign out or close the page.</p>
+<div class="field"><label for="token">GitHub access token</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_..."></div>
+<button id="connect" class="action">Connect to GitHub</button>
+<p class="muted">Required permission: Contents, Read and write, for this repository only. Do not share your token.</p>
+<div id="login-status" class="status hidden" role="status"></div>
+</section>
+<section id="workspace" class="hidden">
+<div class="panel"><div class="admin-head"><div><h2 id="total">Loading entries…</h2><p class="muted">Repository: asharytamano/bangsamoro-profiles · Branch: main · File: index.html</p></div><button id="logout" class="action secondary">Sign out</button></div>
+<h3 id="form-title">Add a new entry</h3>
+<form id="entry-form" class="form-grid">
+<div class="field"><label for="entry-name">Display name</label><input id="entry-name" required maxlength="180" placeholder="Surname, Given Name"></div>
+<div class="field"><label for="entry-url">Facebook post URL</label><input id="entry-url" type="url" required placeholder="https://www.facebook.com/share/p/.../"></div>
+<div class="row-actions"><button id="save-entry" class="action" type="submit">Add entry</button><button id="cancel-edit" class="action secondary hidden" type="button">Cancel</button></div>
+</form><div id="save-status" class="status hidden" role="status"></div>
+</div>
+<div class="toolbar"><input id="filter" type="search" placeholder="Find a name…" autocomplete="off"><span id="shown" class="muted"></span></div>
+<div class="panel" style="padding:0;overflow:auto"><table class="entry-table"><thead><tr><th>Name</th><th>Facebook link</th><th>Actions</th></tr></thead><tbody id="entry-list"></tbody></table></div>
+</section>
+</main>
+<script>
+(() => {
+'use strict';
+const OWNER='asharytamano', REPO='bangsamoro-profiles', BRANCH='main', PATH='index.html';
+const API='https://api.github.com';
+let token='', fileSha='', sourceHtml='', doc=null, records=[], editingId=null, busy=false;
+const $=id=>document.getElementById(id);
+const headers=()=>({'Accept':'application/vnd.github+json','Authorization':'Bearer '+token,'X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'});
+function status(id,message,error=false){const el=$(id);el.textContent=message;el.classList.remove('hidden','error');if(error)el.classList.add('error');}
+function hide(id){$(id).classList.add('hidden');}
+function decodeBase64(value){const binary=atob(value.replace(/\s/g,''));const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));return new TextDecoder().decode(bytes);}
+function encodeBase64(value){const bytes=new TextEncoder().encode(value);let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(binary);}
+function extract(){
+ records=[...doc.querySelectorAll('.entry')].map((li,index)=>({id:index,name:li.querySelector('.entry-name')?.textContent.trim()||'',url:li.querySelector('a')?.getAttribute('href')||''})).filter(x=>x.name&&x.url);
+}
+async function api(path,options={}){const response=await fetch(API+path,{...options,headers:{...headers(),...(options.headers||{})}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'GitHub returned HTTP '+response.status);return data;}
+async function load(){
+ const data=await api('/repos/'+OWNER+'/'+REPO+'/contents/'+PATH+'?ref='+BRANCH);
+ fileSha=data.sha;sourceHtml=decodeBase64(data.content);doc=new DOMParser().parseFromString(sourceHtml,'text/html');extract();
+ $('login').classList.add('hidden');$('workspace').classList.remove('hidden');render();
+}
+function render(){
+ const query=$('filter').value.trim().toLocaleLowerCase();
+ const filtered=records.filter(r=>r.name.toLocaleLowerCase().includes(query));
+ $('total').textContent=records.length+' published entries';
+ $('shown').textContent='Showing '+filtered.length;
+ const tbody=$('entry-list');tbody.replaceChildren();
+ filtered.forEach(record=>{
+  const tr=document.createElement('tr'),name=document.createElement('td'),link=document.createElement('td'),actions=document.createElement('td');
+  name.textContent=record.name;
+  const a=document.createElement('a');a.href=record.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open Facebook post';link.append(a);
+  const edit=document.createElement('button');edit.className='action secondary';edit.textContent='Edit';edit.type='button';edit.addEventListener('click',()=>beginEdit(record.id));
+  const del=document.createElement('button');del.className='action danger';del.textContent='Delete';del.type='button';del.addEventListener('click',()=>removeRecord(record.id));
+  actions.className='row-actions';actions.append(edit,del);tr.append(name,link,actions);tbody.append(tr);
+ });
+}
+function setBusy(value){busy=value;document.querySelectorAll('button').forEach(b=>{if(b.id!=='logout')b.disabled=value;});}
+function normalizeUrl(value){let url;try{url=new URL(value.trim());}catch{throw new Error('Enter a valid Facebook post URL.');}if(url.protocol!=='https:'||!(url.hostname==='facebook.com'||url.hostname.endsWith('.facebook.com')))throw new Error('Use an HTTPS facebook.com link.');return url.href;}
+function getEntryNode(name,url){
+ const li=doc.createElement('li');li.className='entry';li.dataset.name=name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
+ const a=doc.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';
+ const span=doc.createElement('span');span.className='entry-name';span.textContent=name;
+ const arrow=doc.createElement('span');arrow.className='entry-action';arrow.setAttribute('aria-hidden','true');arrow.textContent='↗';
+ const sr=doc.createElement('span');sr.className='sr-only';sr.textContent=' (opens Facebook in a new tab)';
+ a.append(span,arrow,sr);li.append(a);return li;
+}
+function rebuild(){
+ const sections=[...doc.querySelectorAll('.letter-section')];
+ const all=sections.flatMap(s=>[...s.querySelectorAll('.entry')]);
+ const groups=new Map();
+ all.forEach(li=>{const letter=(li.querySelector('.entry-name')?.textContent.trim().charAt(0)||'#').toLocaleUpperCase();if(!groups.has(letter))groups.set(letter,[]);groups.get(letter).push(li);});
+ const root=doc.querySelector('#sections');root.replaceChildren();
+ [...groups.keys()].sort((a,b)=>a.localeCompare(b)).forEach(letter=>{
+  const section=doc.createElement('section');section.className='letter-section';section.id=letter;section.setAttribute('aria-labelledby','heading-'+letter);
+  const heading=doc.createElement('div');heading.className='letter-heading';const h2=doc.createElement('h2');h2.id='heading-'+letter;h2.textContent=letter;
+  const count=doc.createElement('span');count.textContent=groups.get(letter).length+' entries';heading.append(h2,count);
+  const ul=doc.createElement('ul');ul.className='entries';
+  groups.get(letter).sort((a,b)=>a.querySelector('.entry-name').textContent.localeCompare(b.querySelector('.entry-name').textContent,undefined,{sensitivity:'base'})).forEach(li=>ul.append(li));
+  section.append(heading,ul);root.append(section);
+ });
+ const nav=doc.querySelector('.alphabet');nav.replaceChildren();
+ [...groups.keys()].sort((a,b)=>a.localeCompare(b)).forEach(letter=>{const a=doc.createElement('a');a.href='#'+letter;a.dataset.letter=letter;a.setAttribute('aria-label','Jump to '+letter);a.textContent=letter;nav.append(a);});
+ const total=doc.querySelector('.count-line strong');if(total)total.textContent=all.length;
+ const result=doc.querySelector('#result-count');if(result)result.textContent='Showing all '+all.length+' entries';
+}
+async function commit(message){
+ if(busy)return;setBusy(true);
+ try{
+  rebuild();
+  const updated='<!doctype html>\n'+doc.documentElement.outerHTML;
+  const result=await api('/repos/'+OWNER+'/'+REPO+'/contents/'+PATH,{method:'PUT',body:JSON.stringify({message,content:encodeBase64(updated),sha:fileSha,branch:BRANCH})});
+  fileSha=result.content.sha;sourceHtml=updated;extract();render();
+  status('save-status','Saved to GitHub successfully. Commit: '+result.commit.sha.slice(0,7));
+ }catch(error){status('save-status','Save failed: '+error.message+' Your current edits remain in this page. Refresh the file state before retrying if another change was committed.',true);}
+ finally{setBusy(false);}
+}
+function beginEdit(id){const record=records.find(r=>r.id===id);if(!record)return;editingId=id;$('entry-name').value=record.name;$('entry-url').value=record.url;$('form-title').textContent='Edit entry';$('save-entry').textContent='Save changes';$('cancel-edit').classList.remove('hidden');$('entry-name').focus();}
+function resetForm(){editingId=null;$('entry-form').reset();$('form-title').textContent='Add a new entry';$('save-entry').textContent='Add entry';$('cancel-edit').classList.add('hidden');}
+async function removeRecord(id){const record=records.find(r=>r.id===id);if(!record||!confirm('Permanently remove "'+record.name+'" from the published directory? This creates a commit in GitHub.'))return;const li=[...doc.querySelectorAll('.entry')].find(el=>el.querySelector('.entry-name')?.textContent.trim()===record.name&&el.querySelector('a')?.getAttribute('href')===record.url);if(li)li.remove();extract();render();await commit('Remove directory entry: '+record.name);}
+$('connect').addEventListener('click',async()=>{token=$('token').value.trim();if(!token){status('login-status','Please enter your GitHub token.',true);return;}setBusy(true);try{await load();}catch(error){token='';status('login-status','Could not connect: '+error.message,true);}finally{setBusy(false);$('token').value='';}});
+$('logout').addEventListener('click',()=>{token='';fileSha='';sourceHtml='';doc=null;records=[];$('workspace').classList.add('hidden');$('login').classList.remove('hidden');$('token').value='';hide('login-status');resetForm();});
+$('filter').addEventListener('input',render);
+$('cancel-edit').addEventListener('click',resetForm);
+$('entry-form').addEventListener('submit',async event=>{event.preventDefault();try{const name=$('entry-name').value.trim();const url=normalizeUrl($('entry-url').value);if(!name)throw new Error('Enter a display name.');
+ if(editingId!==null){const old=records.find(r=>r.id===editingId);const li=[...doc.querySelectorAll('.entry')].find(el=>el.querySelector('.entry-name')?.textContent.trim()===old.name&&el.querySelector('a')?.getAttribute('href')===old.url);if(!li)throw new Error('Could not locate the entry in the source file.');li.replaceWith(getEntryNode(name,url));}
+ else {if(records.some(r=>r.name.toLocaleLowerCase()===name.toLocaleLowerCase()&&r.url===url))throw new Error('This entry already exists.');let first=doc.querySelector('.entries');if(!first)throw new Error('Directory structure not found.');first.append(getEntryNode(name,url));}
+ resetForm();extract();render();await commit((editingId===null?'Add':'Update')+' directory entry: '+name);
+ }catch(error){status('save-status',error.message,true);}});
+})();
+</script>
+</body></html>
