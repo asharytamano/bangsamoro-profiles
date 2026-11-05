@@ -131,10 +131,10 @@ $('connect').addEventListener('click',async()=>{token=$('token').value.trim();if
 $('logout').addEventListener('click',()=>{token='';fileSha='';sourceHtml='';doc=null;records=[];$('workspace').classList.add('hidden');$('login').classList.remove('hidden');$('token').value='';hide('login-status');resetForm();});
 $('filter').addEventListener('input',render);
 $('cancel-edit').addEventListener('click',resetForm);
-$('entry-form').addEventListener('submit',async event=>{event.preventDefault();try{const name=$('entry-name').value.trim();const url=normalizeUrl($('entry-url').value);if(!name)throw new Error('Enter a display name.');
+$('entry-form').addEventListener('submit',async event=>{event.preventDefault();try{const name=$('entry-name').value.trim();const url=normalizeUrl($('entry-url').value);if(!name)throw new Error('Enter a display name.');const wasEditing=editingId!==null;
  if(editingId!==null){const old=records.find(r=>r.id===editingId);const li=[...doc.querySelectorAll('.entry')].find(el=>el.querySelector('.entry-name')?.textContent.trim()===old.name&&el.querySelector('a')?.getAttribute('href')===old.url);if(!li)throw new Error('Could not locate the entry in the source file.');li.replaceWith(getEntryNode(name,url));}
  else {if(records.some(r=>r.name.toLocaleLowerCase()===name.toLocaleLowerCase()&&r.url===url))throw new Error('This entry already exists.');let first=doc.querySelector('.entries');if(!first)throw new Error('Directory structure not found.');first.append(getEntryNode(name,url));}
- resetForm();extract();render();await commit((editingId===null?'Add':'Update')+' directory entry: '+name);
+ resetForm();extract();render();await commit((wasEditing?'Update':'Add')+' directory entry: '+name);
  }catch(error){status('save-status',error.message,true);}});
 })();
 </script>
